@@ -1,0 +1,29 @@
+flowchart LR
+    subgraph Client["Client / Browser"]
+        SPA["React SPA<br/>(Vite + Tailwind)"]
+        Portal["Public Verify Portal<br/>/verify · /scan"]
+    end
+
+    subgraph Server["Backend (Node.js + Express)"]
+        API["REST API<br/>/api/*"]
+        Auth["JWT Auth<br/>access + refresh"]
+        Svc["Services<br/>hash · qr · pdf · ipfs · blockchain"]
+    end
+
+    subgraph Data["Off-chain storage"]
+        Mongo[("MongoDB<br/>users · institutions<br/>students · transcripts")]
+        IPFS[["IPFS / Pinata<br/>transcript PDFs"]]
+    end
+
+    subgraph Chain["Blockchain (Ethereum)"]
+        Contract["AcademicTranscriptContract<br/>hash anchors + events"]
+    end
+
+    SPA -->|HTTPS JSON + JWT| API
+    Portal -->|HTTPS JSON public| API
+    API --> Auth
+    API --> Svc
+    Svc -->|Mongoose| Mongo
+    Svc -->|upload / fetch| IPFS
+    Svc -->|ethers.js v6| Contract
+    Contract -.->|verifyTranscript view| Svc

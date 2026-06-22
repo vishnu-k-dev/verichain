@@ -53,6 +53,13 @@ async function main() {
   fs.writeFileSync(localOut, JSON.stringify(output, null, 2));
   console.log(`✓ Deployment record written to: ${localOut}`);
 
+  // Optional extra output path (e.g. a Docker shared volume the backend reads).
+  if (process.env.CONTRACT_OUT) {
+    fs.mkdirSync(path.dirname(process.env.CONTRACT_OUT), { recursive: true });
+    fs.writeFileSync(process.env.CONTRACT_OUT, JSON.stringify(output, null, 2));
+    console.log(`✓ ABI + address also written to: ${process.env.CONTRACT_OUT}`);
+  }
+
   console.log("\nNext steps:");
   console.log(`  • Set CONTRACT_ADDRESS=${address} in your .env`);
   console.log(`  • Set VITE_CONTRACT_ADDRESS=${address} for the frontend`);

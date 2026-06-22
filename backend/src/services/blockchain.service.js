@@ -1,3 +1,4 @@
+import fs from "fs";
 import { ethers } from "ethers";
 import { createRequire } from "module";
 import { env } from "../config/env.js";
@@ -7,15 +8,33 @@ import { ApiError } from "../utils/ApiError.js";
 const require = createRequire(import.meta.url);
 
 // Lazily loaded so a missing/empty contract.json never crashes the process.
+// Re-checks the dynamic path until a deployed address appears, then caches.
 let contractMeta = null;
 function loadContractMeta() {
-  if (contractMeta) return contractMeta;
-  try {
-    contractMeta = require("../config/contract.json");
-  } catch {
-    contractMeta = { address: "", abi: [] };
+  if (contractMeta && contractMeta.address) return contractMeta;
+
+  // 1. Runtime path (Docker shared volume / external deploy).
+  if (env.blockchain.contractJsonPath) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(env.blockchain.contractJsonPath, "utf-8"));
+      if (parsed.address) {
+        contractMeta = parsed;
+        return contractMeta;
+      }
+      if (parsed.abi?.length) return parsed; // abi present but not deployed yet
+    } catch {
+      /* not written yet — fall through */
+    }
   }
-  return contractMeta;
+
+  // 2. Bundled copy (written by the deploy script during the contracts build).
+  try {
+    const bundled = require("../config/contract.json");
+    if (bundled.address) contractMeta = bundled;
+    return bundled;
+  } catch {
+    return { address: "", abi: [] };
+  }
 }
 
 function rpcUrl() {

@@ -1,0 +1,23 @@
+stateDiagram-v2
+    [*] --> NonExistent
+
+    NonExistent --> Issued : addTranscript()<br/>onlyRegisteredInstitution<br/>emits TranscriptIssued
+
+    state Issued {
+        [*] --> Valid
+        Valid --> Valid : verifyTranscript()<br/>hash matches -> isValid=true
+    }
+
+    Issued --> Revoked : revokeTranscript()<br/>onlyRegisteredInstitution (owner)<br/>emits TranscriptRevoked
+
+    state Revoked {
+        [*] --> Invalidated
+        Invalidated --> Invalidated : verifyTranscript()<br/>isValid=false, isRevoked=true
+    }
+
+    Revoked --> Revoked : revokeTranscript()<br/>reverts Revoked()
+
+    note right of Issued
+        IPFS hash is immutable.
+        Only the isRevoked flag changes.
+    end note

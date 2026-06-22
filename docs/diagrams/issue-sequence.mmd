@@ -1,0 +1,24 @@
+sequenceDiagram
+    autonumber
+    actor Inst as Institution
+    participant FE as React SPA
+    participant API as Express API
+    participant Hash as hash.service
+    participant QR as qr/pdf.service
+    participant IPFS as IPFS / Pinata
+    participant BC as Blockchain
+    participant DB as MongoDB
+
+    Inst->>FE: Select student + upload PDF
+    FE->>API: POST /api/transcripts/issue (multipart, JWT)
+    API->>API: Authorize (role=institution, owns student)
+    API->>QR: Generate QR for /verify/{transcriptId}
+    API->>QR: Stamp QR onto PDF (last page)
+    API->>Hash: SHA-256 of stamped PDF
+    API->>IPFS: uploadFile(stampedPDF)
+    IPFS-->>API: { cid, url }
+    API->>BC: addTranscript(transcriptId, studentId, cid, sha256)
+    BC-->>API: { txHash, blockNumber }
+    API->>DB: Save Transcript document
+    API-->>FE: 201 { transcript, qr, verifyUrl, downloadUrl }
+    FE-->>Inst: Success card (QR + on-chain proof)

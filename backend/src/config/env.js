@@ -45,6 +45,9 @@ export const env = {
       process.env.BLOCKCHAIN_MNEMONIC ||
       "test test test test test test test test test test test junk",
     contractAddress: process.env.CONTRACT_ADDRESS || "",
+    // Optional path to a contract.json written at runtime (e.g. by the Docker
+    // deployer into a shared volume). Takes precedence over the bundled copy.
+    contractJsonPath: process.env.CONTRACT_JSON_PATH || "",
   },
 
   pinata: {
