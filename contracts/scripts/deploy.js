@@ -3,69 +3,31 @@ const path = require("path");
 const hre = require("hardhat");
 
 /**
- * Deploys AcademicTranscriptContract and writes the address + ABI to
- * backend/src/config/contract.json so the backend can wire up ethers without
- * any manual copy/paste. Works on any network via `--network <name>`.
+ * Deploys TranscriptRegistry and writes { address, abi } to server/contract.json
+ * so the relayer can connect with zero manual configuration.
  */
 async function main() {
-  const network = hre.network.name;
   const [deployer] = await hre.ethers.getSigners();
+  console.log(`Deploying with account: ${deployer.address}`);
 
-  console.log("============================================================");
-  console.log(`Deploying to network : ${network}`);
-  console.log(`Deployer address     : ${deployer.address}`);
-  const balance = await hre.ethers.provider.getBalance(deployer.address);
-  console.log(`Deployer balance     : ${hre.ethers.formatEther(balance)} ETH`);
-  console.log("============================================================");
+  const Registry = await hre.ethers.getContractFactory("TranscriptRegistry");
+  const registry = await Registry.deploy();
+  await registry.waitForDeployment();
 
-  const Factory = await hre.ethers.getContractFactory("AcademicTranscriptContract");
-  const contract = await Factory.deploy();
-  await contract.waitForDeployment();
+  const address = await registry.getAddress();
+  console.log(`✓ TranscriptRegistry deployed at: ${address}`);
 
-  const address = await contract.getAddress();
-  const deployTx = contract.deploymentTransaction();
+  const artifact = await hre.artifacts.readArtifact("TranscriptRegistry");
+  const out = { address, abi: artifact.abi, network: hre.network.name };
 
-  console.log(`\n✓ Contract deployed at: ${address}`);
-  if (deployTx) console.log(`  tx hash: ${deployTx.hash}`);
-
-  // Pull the ABI from the compiled artifact.
-  const artifact = await hre.artifacts.readArtifact("AcademicTranscriptContract");
-
-  const output = {
-    address,
-    network,
-    chainId: Number((await hre.ethers.provider.getNetwork()).chainId),
-    deployedAt: new Date().toISOString(),
-    abi: artifact.abi,
-  };
-
-  // Write to backend config (created if missing).
-  const backendConfigDir = path.resolve(__dirname, "../../backend/src/config");
-  fs.mkdirSync(backendConfigDir, { recursive: true });
-  const backendOut = path.join(backendConfigDir, "contract.json");
-  fs.writeFileSync(backendOut, JSON.stringify(output, null, 2));
-  console.log(`\n✓ ABI + address written to: ${backendOut}`);
-
-  // Also keep a copy alongside the contracts deployments for reference.
-  const localDir = path.resolve(__dirname, "../deployments");
-  fs.mkdirSync(localDir, { recursive: true });
-  const localOut = path.join(localDir, `${network}.json`);
-  fs.writeFileSync(localOut, JSON.stringify(output, null, 2));
-  console.log(`✓ Deployment record written to: ${localOut}`);
-
-  // Optional extra output path (e.g. a Docker shared volume the backend reads).
-  if (process.env.CONTRACT_OUT) {
-    fs.mkdirSync(path.dirname(process.env.CONTRACT_OUT), { recursive: true });
-    fs.writeFileSync(process.env.CONTRACT_OUT, JSON.stringify(output, null, 2));
-    console.log(`✓ ABI + address also written to: ${process.env.CONTRACT_OUT}`);
-  }
-
-  console.log("\nNext steps:");
-  console.log(`  • Set CONTRACT_ADDRESS=${address} in your .env`);
-  console.log(`  • Set VITE_CONTRACT_ADDRESS=${address} for the frontend`);
+  const serverDir = path.resolve(__dirname, "../../server");
+  fs.mkdirSync(serverDir, { recursive: true });
+  const outPath = path.join(serverDir, "contract.json");
+  fs.writeFileSync(outPath, JSON.stringify(out, null, 2));
+  console.log(`✓ Wrote address + ABI to ${outPath}`);
 }
 
-main().catch((error) => {
-  console.error(error);
+main().catch((err) => {
+  console.error(err);
   process.exitCode = 1;
 });

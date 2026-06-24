@@ -1,21 +1,17 @@
 {
-  "name": "blockchain-transcript-contracts",
+  "name": "transcript-contracts",
   "version": "1.0.0",
-  "description": "Solidity smart contracts for the academic transcript verification system",
+  "description": "TranscriptRegistry smart contract (Hardhat)",
   "license": "MIT",
   "scripts": {
-    "compile": "hardhat compile",
     "test": "hardhat test",
-    "coverage": "hardhat coverage",
     "node": "hardhat node",
-    "deploy:ganache": "hardhat run scripts/deploy.js --network ganache",
-    "deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia",
-    "deploy:local": "hardhat run scripts/deploy.js --network localhost"
+    "deploy": "hardhat run scripts/deploy.js --network localhost",
+    "deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "dotenv": "^16.4.5",
-    "hardhat": "^2.22.10",
-    "solidity-coverage": "^0.8.12"
+    "hardhat": "^2.22.10"
   }
 }

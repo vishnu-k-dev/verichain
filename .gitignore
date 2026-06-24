@@ -1,31 +1,22 @@
-# Dependencies
 node_modules/
 **/node_modules/
 
-# Environment
+# Env
 .env
-.env.local
 *.local
 
-# Build artifacts
-frontend/dist/
-backend/dist/
+# Build / generated
+client/dist/
 contracts/artifacts/
 contracts/cache/
-contracts/coverage/
-contracts/coverage.json
-contracts/deployments/
-coverage/
+server/contract.json
 
 # Logs
 *.log
 npm-debug.log*
 
-# Local mock IPFS store
-backend/.ipfs-store/
-
-# Editor / OS
+# OS / editor
 .DS_Store
+Thumbs.db
 .vscode/
 .idea/
-Thumbs.db
