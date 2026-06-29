@@ -57,12 +57,16 @@ let _meta = null;
 export async function loadMeta() {
   if (_meta) return _meta;
   const res = await fetch("/contract.json", { cache: "no-store" });
-  if (!res.ok) {
+  // When contract.json is absent, the SPA rewrite serves index.html (200 + HTML)
+  // — so a body that isn't JSON means the contract wasn't deployed/committed.
+  const body = await res.text();
+  try {
+    _meta = JSON.parse(body);
+  } catch {
     throw new Error(
-      "Couldn't load contract.json. On a deployed site it likely wasn't committed/built; locally, run `npm run dev`."
+      "No contract.json in this deployment. Run `npm run deploy:sepolia`, commit client/public/contract.json, then redeploy."
     );
   }
-  _meta = await res.json();
   return _meta;
 }
 
