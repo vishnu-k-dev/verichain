@@ -28,7 +28,7 @@ export function PerspectiveGrid({
   return (
     <div
       className={cn("relative h-full w-full overflow-hidden bg-transparent", className)}
-      style={{ perspective: "2000px", transformStyle: "preserve-3d" }}
+      style={{ perspective: "2000px", transformStyle: "preserve-3d", "--fade-stop": fadeStop }}
     >
       <div
         className="absolute grid aspect-square w-[80rem] origin-center"
@@ -55,7 +55,7 @@ export function PerspectiveGrid({
         <div
           className="pointer-events-none absolute inset-0 z-10"
           style={{
-            background: `radial-gradient(circle, transparent 25%, ${fadeStop} ${fadeRadius}%)`,
+            background: `radial-gradient(circle, transparent 25%, var(--fade-stop) ${fadeRadius}%)`,
           }}
         />
       )}

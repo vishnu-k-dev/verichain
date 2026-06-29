@@ -62,9 +62,9 @@ export default function App() {
 
   return (
     <div className="relative min-h-screen">
-      {/* Decorative 3D grid backdrop behind the header + hero */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[540px] overflow-hidden">
-        <PerspectiveGrid gridSize={26} fadeRadius={58} className="opacity-[0.55]" />
+      {/* Decorative 3D grid backdrop across the whole page (fixed, behind all content) */}
+      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+        <PerspectiveGrid gridSize={32} fadeRadius={72} className="opacity-[0.5]" />
       </div>
 
       <Header meta={meta} account={account} onConnect={connect} />
