@@ -1,10 +1,16 @@
 import { useEffect, useState, useCallback } from "react";
+import QRCode from "qrcode";
 import {
-  ShieldCheck, FileSignature, ListChecks, Upload, Link2, Copy, Check,
+  ShieldCheck, FileSignature, ListChecks, Upload, Link2, Copy, Check, Wallet,
   CircleCheck, CircleSlash, CircleHelp, Loader2, Ban, RefreshCw,
 } from "lucide-react";
-import { api } from "./api.js";
+import {
+  loadMeta, readContract, writeContract, connectWallet, hasWallet, onWalletChange,
+  toBytes32, format, explainError, newId,
+} from "./chain.js";
 import { sha256File, shorten, formatDate, copy } from "./lib.js";
+import { AsciiGlitchRipple } from "./components/AsciiGlitchRipple.jsx";
+import { PerspectiveGrid } from "./components/PerspectiveGrid.jsx";
 
 const TABS = [
   { id: "issue", label: "Issue", icon: FileSignature },
@@ -14,33 +20,53 @@ const TABS = [
 
 export default function App() {
   const [tab, setTab] = useState("issue");
-  const [health, setHealth] = useState(null);
+  const [meta, setMeta] = useState(null);
+  const [account, setAccount] = useState(null);
   const [records, setRecords] = useState([]);
   const [prefillId, setPrefillId] = useState("");
 
   const refresh = useCallback(async () => {
     try {
-      const { transcripts } = await api.list();
-      setRecords(transcripts);
+      const c = await readContract();
+      const total = Number(await c.total());
+      const page = total ? await c.list(0, total) : [];
+      setRecords(page.map(format).reverse());
     } catch {
-      /* server may not be up yet */
+      /* chain not up yet */
+    }
+  }, []);
+
+  const connect = useCallback(async () => {
+    try {
+      setAccount(await connectWallet());
+    } catch (e) {
+      alert(explainError(e));
     }
   }, []);
 
   useEffect(() => {
-    api.health().then(setHealth).catch(() => setHealth({ connected: false }));
+    loadMeta().then(setMeta).catch(() => setMeta(null));
     refresh();
+    // Already-authorized account?
+    if (hasWallet()) {
+      window.ethereum.request({ method: "eth_accounts" }).then((a) => a[0] && setAccount(a[0]));
+    }
     // Deep link from a QR code: ?verify=VC-XXXX
     const id = new URLSearchParams(window.location.search).get("verify");
-    if (id) {
-      setPrefillId(id);
-      setTab("verify");
-    }
+    if (id) { setPrefillId(id); setTab("verify"); }
+    return onWalletChange(() => {
+      window.ethereum.request({ method: "eth_accounts" }).then((a) => setAccount(a[0] || null));
+    });
   }, [refresh]);
 
   return (
-    <div className="min-h-screen">
-      <Header health={health} />
+    <div className="relative min-h-screen">
+      {/* Decorative 3D grid backdrop behind the header + hero */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[540px] overflow-hidden">
+        <PerspectiveGrid gridSize={26} fadeRadius={58} className="opacity-[0.55]" />
+      </div>
+
+      <Header meta={meta} account={account} onConnect={connect} />
 
       <main className="mx-auto max-w-2xl px-5 pb-24">
         <Hero />
@@ -58,11 +84,13 @@ export default function App() {
           ))}
         </nav>
 
-        {tab === "issue" && <IssueView onIssued={refresh} />}
+        {tab === "issue" && <IssueView account={account} onConnect={connect} onIssued={refresh} />}
         {tab === "verify" && <VerifyView prefillId={prefillId} />}
         {tab === "records" && (
           <RecordsView
             records={records}
+            account={account}
+            onConnect={connect}
             onRefresh={refresh}
             onVerify={(id) => { setPrefillId(id); setTab("verify"); }}
           />
@@ -74,8 +102,7 @@ export default function App() {
 
 /* ------------------------------- chrome -------------------------------- */
 
-function Header({ health }) {
-  const connected = health?.connected;
+function Header({ meta, account, onConnect }) {
   return (
     <header className="border-b border-line/80">
       <div className="mx-auto flex max-w-2xl items-center justify-between px-5 py-4">
@@ -83,19 +110,28 @@ function Header({ health }) {
           <span className="grid h-8 w-8 place-items-center rounded-lg bg-ink text-paper">
             <ShieldCheck className="h-[18px] w-[18px]" />
           </span>
-          <span className="font-serif text-xl font-600">Ledgr</span>
+          <AsciiGlitchRipple as="span" dur={650} className="cursor-pointer font-serif text-xl font-semibold text-ink">
+            {"Ledgr"}
+          </AsciiGlitchRipple>
         </div>
-        <span
-          className={`pill border ${
-            connected
-              ? "border-valid/20 bg-valid/5 text-valid"
-              : "border-line bg-black/[.03] text-muted"
-          }`}
-          title={health?.contract ? `Contract ${health.contract}` : ""}
-        >
-          <span className={`h-1.5 w-1.5 rounded-full ${connected ? "bg-valid" : "bg-muted"}`} />
-          {connected ? `On-chain · ${shorten(health.contract, 6, 4)}` : "Offline"}
-        </span>
+        <div className="flex items-center gap-2">
+          <span
+            className={`pill border ${meta ? "border-valid/20 bg-valid/5 text-valid" : "border-line bg-black/[.03] text-muted"}`}
+            title={meta?.address || ""}
+          >
+            <span className={`h-1.5 w-1.5 rounded-full ${meta ? "bg-valid" : "bg-muted"}`} />
+            {meta ? `On-chain · ${shorten(meta.address, 6, 4)}` : "No contract"}
+          </span>
+          {account ? (
+            <span className="pill border border-line bg-white text-ink" title={account}>
+              <Wallet className="h-3.5 w-3.5" /> {shorten(account, 5, 4)}
+            </span>
+          ) : (
+            <button onClick={onConnect} className="btn-solid h-8 px-3 py-0 text-xs">
+              <Wallet className="h-3.5 w-3.5" /> Connect
+            </button>
+          )}
+        </div>
       </div>
     </header>
   );
@@ -105,11 +141,13 @@ function Hero() {
   return (
     <div className="py-10 text-center">
       <h1 className="font-serif text-[34px] leading-tight text-ink sm:text-[40px]">
-        Transcripts you can trust.
+        <AsciiGlitchRipple as="span" dur={900} spread={1.2} className="cursor-default">
+          {"Transcripts you can trust."}
+        </AsciiGlitchRipple>
       </h1>
       <p className="mx-auto mt-3 max-w-md text-[15px] text-muted">
-        Issue academic transcripts to the blockchain and verify any of them in
-        seconds — tamper-proof, no central authority to trust.
+        Issue academic transcripts straight to the blockchain and verify any of
+        them in seconds — tamper-proof, no central authority to trust.
       </p>
     </div>
   );
@@ -118,11 +156,17 @@ function Hero() {
 /* ------------------------------- issue --------------------------------- */
 
 const EMPTY = { studentName: "", rollNo: "", course: "", grade: "" };
+const SAMPLE = {
+  studentName: "Ada Lovelace",
+  rollNo: "CS-2021-014",
+  course: "B.Sc. Computer Science",
+  grade: "First Class (8.7)",
+};
 
-function IssueView({ onIssued }) {
+function IssueView({ account, onConnect, onIssued }) {
   const [form, setForm] = useState(EMPTY);
   const [file, setFile] = useState(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
 
@@ -130,19 +174,31 @@ function IssueView({ onIssued }) {
 
   const submit = async (e) => {
     e.preventDefault();
-    setBusy(true);
     setError("");
     try {
-      const fileHash = file ? await sha256File(file) : undefined;
-      const data = await api.issue({ ...form, fileHash });
-      setResult(data);
+      setBusy("Preparing…");
+      const fileHash = file ? toBytes32(await sha256File(file)) : toBytes32(null);
+      const id = newId();
+
+      const contract = await writeContract();
+      setBusy("Confirm in MetaMask…");
+      const tx = await contract.issue(id, form.studentName, form.rollNo, form.course, form.grade, fileHash);
+      setBusy("Writing to the chain…");
+      const receipt = await tx.wait();
+
+      const read = await readContract();
+      const transcript = format(await read.get(id));
+      const verifyUrl = `${window.location.origin}/?verify=${id}`;
+      const qr = await QRCode.toDataURL(verifyUrl, { width: 320, margin: 2 });
+
+      setResult({ transcript, txHash: tx.hash, blockNumber: receipt.blockNumber, qr, verifyUrl });
       setForm(EMPTY);
       setFile(null);
       onIssued();
     } catch (err) {
-      setError(err.message);
+      setError(explainError(err));
     } finally {
-      setBusy(false);
+      setBusy("");
     }
   };
 
@@ -150,6 +206,15 @@ function IssueView({ onIssued }) {
 
   return (
     <form onSubmit={submit} className="card animate-rise space-y-5 p-6">
+      {!account && (
+        <div className="flex items-center justify-between rounded-lg border border-line bg-paper px-4 py-3 text-sm">
+          <span className="text-muted">Connect the issuer wallet to issue a transcript.</span>
+          <button type="button" onClick={onConnect} className="btn-solid h-8 px-3 py-0 text-xs">
+            <Wallet className="h-3.5 w-3.5" /> Connect
+          </button>
+        </div>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Student name" value={form.studentName} onChange={set("studentName")} placeholder="Ada Lovelace" required />
         <Field label="Roll number" value={form.rollNo} onChange={set("rollNo")} placeholder="CS-2021-014" required />
@@ -165,23 +230,14 @@ function IssueView({ onIssued }) {
       {error && <Notice tone="error">{error}</Notice>}
 
       <div className="flex items-center justify-between">
-        <button type="button" onClick={() => setForm(SAMPLE)} className="btn-ghost text-xs">
-          Fill sample data
-        </button>
-        <button type="submit" className="btn-solid" disabled={busy}>
-          {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Writing to chain…</> : <><FileSignature className="h-4 w-4" /> Issue transcript</>}
+        <button type="button" onClick={() => setForm(SAMPLE)} className="btn-ghost text-xs">Fill sample data</button>
+        <button type="submit" className="btn-solid" disabled={Boolean(busy)}>
+          {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> {busy}</> : <><FileSignature className="h-4 w-4" /> Issue transcript</>}
         </button>
       </div>
     </form>
   );
 }
-
-const SAMPLE = {
-  studentName: "Ada Lovelace",
-  rollNo: "CS-2021-014",
-  course: "B.Sc. Computer Science",
-  grade: "First Class (8.7)",
-};
 
 function IssueSuccess({ data, onAgain }) {
   const t = data.transcript;
@@ -205,7 +261,7 @@ function IssueSuccess({ data, onAgain }) {
         </div>
       </div>
       <div className="flex flex-wrap gap-2 border-t border-line px-6 py-4">
-        <CopyButton text={`${window.location.origin}/?verify=${t.id}`} label="Copy verify link" />
+        <CopyButton text={data.verifyUrl} label="Copy verify link" />
         <button onClick={onAgain} className="btn-outline text-sm">Issue another</button>
       </div>
     </div>
@@ -225,15 +281,29 @@ function VerifyView({ prefillId }) {
   const run = useCallback(async (payload) => {
     setBusy(true); setError(""); setResult(null);
     try {
-      setResult(await api.verify(payload));
+      const c = await readContract();
+      if (payload.id) {
+        try {
+          const t = format(await c.get(payload.id));
+          setResult({ status: t.revoked ? "REVOKED" : "VALID", transcript: t });
+        } catch {
+          setResult({ status: "NOT_FOUND" });
+        }
+      } else {
+        const [found, raw] = await c.verifyByHash(payload.fileHash);
+        if (!found) setResult({ status: "NOT_FOUND" });
+        else {
+          const t = format(raw);
+          setResult({ status: t.revoked ? "REVOKED" : "VALID", transcript: t });
+        }
+      }
     } catch (err) {
-      setError(err.message);
+      setError(explainError(err));
     } finally {
       setBusy(false);
     }
   }, []);
 
-  // Auto-verify when arriving from a QR deep link.
   useEffect(() => {
     if (prefillId) { setId(prefillId); run({ id: prefillId }); }
   }, [prefillId, run]);
@@ -243,7 +313,7 @@ function VerifyView({ prefillId }) {
     if (mode === "id") {
       if (id.trim()) run({ id: id.trim() });
     } else if (file) {
-      run({ fileHash: await sha256File(file) });
+      run({ fileHash: toBytes32(await sha256File(file)) });
     }
   };
 
@@ -265,7 +335,7 @@ function VerifyView({ prefillId }) {
             </div>
           )}
           <button type="submit" className="btn-solid w-full" disabled={busy || (mode === "id" ? !id.trim() : !file)}>
-            {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Checking the chain…</> : <><ShieldCheck className="h-4 w-4" /> Verify</>}
+            {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Reading the chain…</> : <><ShieldCheck className="h-4 w-4" /> Verify</>}
           </button>
         </form>
       </div>
@@ -283,18 +353,18 @@ const RESULT_META = {
 };
 
 function VerifyResult({ result }) {
-  const meta = RESULT_META[result.status] || RESULT_META.NOT_FOUND;
-  const Icon = meta.icon;
+  const m = RESULT_META[result.status] || RESULT_META.NOT_FOUND;
+  const Icon = m.icon;
   const t = result.transcript;
   return (
     <div className="card animate-rise overflow-hidden">
-      <div className={`flex items-center gap-4 px-6 py-6 ${meta.bg}`}>
-        <span className={`grid h-14 w-14 place-items-center rounded-full bg-white ring-8 ${meta.ring}`}>
-          <Icon className={`h-7 w-7 ${meta.tone}`} />
+      <div className={`flex items-center gap-4 px-6 py-6 ${m.bg}`}>
+        <span className={`grid h-14 w-14 place-items-center rounded-full bg-white ring-8 ${m.ring}`}>
+          <Icon className={`h-7 w-7 ${m.tone}`} />
         </span>
         <div>
-          <h3 className={`font-serif text-2xl ${meta.tone}`}>{meta.title}</h3>
-          <p className="text-sm text-muted">{meta.note}</p>
+          <h3 className={`font-serif text-2xl ${m.tone}`}>{m.title}</h3>
+          <p className="text-sm text-muted">{m.note}</p>
         </div>
       </div>
       {t && (
@@ -309,17 +379,19 @@ function VerifyResult({ result }) {
 
 /* ------------------------------ records -------------------------------- */
 
-function RecordsView({ records, onRefresh, onVerify }) {
+function RecordsView({ records, account, onConnect, onRefresh, onVerify }) {
   const [busyId, setBusyId] = useState(null);
 
   const revoke = async (id) => {
     if (!confirm(`Revoke ${id}? This is permanent.`)) return;
     setBusyId(id);
     try {
-      await api.revoke(id);
+      const c = await writeContract();
+      const tx = await c.revoke(id);
+      await tx.wait();
       await onRefresh();
     } catch (err) {
-      alert(err.message);
+      alert(explainError(err));
     } finally {
       setBusyId(null);
     }
@@ -350,7 +422,12 @@ function RecordsView({ records, onRefresh, onVerify }) {
                 <StatusBadge revoked={t.revoked} />
                 <button onClick={() => onVerify(t.id)} className="btn-ghost text-xs">Verify</button>
                 {!t.revoked && (
-                  <button onClick={() => revoke(t.id)} className="btn-ghost text-xs text-revoked hover:bg-revoked/10" disabled={busyId === t.id}>
+                  <button
+                    onClick={() => (account ? revoke(t.id) : onConnect())}
+                    className="btn-ghost text-xs text-revoked hover:bg-revoked/10"
+                    disabled={busyId === t.id}
+                    title={account ? "Revoke" : "Connect wallet to revoke"}
+                  >
                     {busyId === t.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Ban className="h-3.5 w-3.5" />}
                   </button>
                 )}
@@ -379,9 +456,7 @@ function SegBtn({ active, onClick, children }) {
     <button
       type="button"
       onClick={onClick}
-      className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition ${
-        active ? "bg-white text-ink shadow-soft" : "text-muted hover:text-ink"
-      }`}
+      className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition ${active ? "bg-white text-ink shadow-soft" : "text-muted hover:text-ink"}`}
     >
       {children}
     </button>
@@ -440,11 +515,7 @@ function ProofRow({ icon: Icon, label, value, copyText }) {
   return (
     <div className="flex items-center justify-between gap-3">
       <span className="flex items-center gap-1.5 text-muted">{Icon && <Icon className="h-3.5 w-3.5" />}{label}</span>
-      <button
-        type="button"
-        onClick={copyText ? onCopy : undefined}
-        className={`font-mono text-ink ${copyText ? "hover:text-accent" : "cursor-default"}`}
-      >
+      <button type="button" onClick={copyText ? onCopy : undefined} className={`font-mono text-ink ${copyText ? "hover:text-accent" : "cursor-default"}`}>
         {done ? "copied ✓" : value}
       </button>
     </div>

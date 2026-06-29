@@ -2,13 +2,13 @@
   "name": "ledgr-transcripts",
   "private": true,
   "version": "1.0.0",
-  "description": "Blockchain academic transcript registry — contract + relayer + UI",
+  "description": "Blockchain academic transcript registry — Solidity contract + React/MetaMask dApp",
   "scripts": {
-    "setup": "npm install && npm --prefix contracts install && npm --prefix server install && npm --prefix client install",
+    "setup": "npm install && npm --prefix contracts install && npm --prefix client install",
     "chain": "npm --prefix contracts run node",
     "deploy": "npm --prefix contracts run deploy",
     "test": "npm --prefix contracts test",
-    "dev": "concurrently -k -n chain,api,web -c blue,green,magenta \"npm --prefix contracts run node\" \"wait-on tcp:127.0.0.1:8545 && npm --prefix contracts run deploy && npm --prefix server start\" \"npm --prefix client run dev\""
+    "dev": "concurrently -k -n chain,web -c blue,magenta \"npm --prefix contracts run node\" \"wait-on tcp:127.0.0.1:8545 && npm --prefix contracts run deploy && npm --prefix client run dev\""
   },
   "devDependencies": {
     "concurrently": "^9.0.1",

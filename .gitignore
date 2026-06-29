@@ -9,7 +9,7 @@ node_modules/
 client/dist/
 contracts/artifacts/
 contracts/cache/
-server/contract.json
+client/public/contract.json
 
 # Logs
 *.log

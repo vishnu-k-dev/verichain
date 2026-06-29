@@ -8,6 +8,12 @@
   ::selection { background: #18181b; color: #faf9f6; }
 }
 
+/* Subtle glow while AsciiGlitchRipple text is scrambling (no layout shift). */
+.as {
+  text-shadow: 0 0 14px rgba(79, 70, 229, 0.28);
+  white-space: pre;
+}
+
 @layer components {
   .field {
     @apply w-full rounded-lg border border-line bg-white px-3.5 py-2.5 text-[15px]

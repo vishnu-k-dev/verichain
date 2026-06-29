@@ -1,3 +1,6 @@
+/** Join truthy class names (tiny clsx-style helper). */
+export const cn = (...args) => args.filter(Boolean).join(" ");
+
 /** SHA-256 of a File, as lowercase hex (matches the on-chain fileHash). */
 export async function sha256File(file) {
   const buf = await file.arrayBuffer();
