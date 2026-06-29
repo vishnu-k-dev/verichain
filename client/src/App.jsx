@@ -2,13 +2,14 @@ import { useEffect, useState, useCallback } from "react";
 import QRCode from "qrcode";
 import {
   ShieldCheck, FileSignature, ListChecks, Upload, Link2, Copy, Check, Wallet,
-  CircleCheck, CircleSlash, CircleHelp, Loader2, Ban, RefreshCw,
+  CircleCheck, CircleSlash, CircleHelp, Loader2, Ban, RefreshCw, FileText,
 } from "lucide-react";
 import {
   loadMeta, readContract, writeContract, connectWallet, hasWallet, onWalletChange,
   toBytes32, format, explainError, newId,
 } from "./chain.js";
 import { sha256File, shorten, formatDate, copy } from "./lib.js";
+import { savePdf, loadPdf } from "./pdfStore.js";
 import { AsciiGlitchRipple } from "./components/AsciiGlitchRipple.jsx";
 import { PerspectiveGrid } from "./components/PerspectiveGrid.jsx";
 
@@ -189,6 +190,10 @@ function IssueView({ account, meta, onConnect, onIssued }) {
       const tx = await contract.issue(id, form.studentName, form.rollNo, form.course, form.grade, fileHash);
       setBusy("Writing to the chain…");
       const receipt = await tx.wait();
+
+      // Keep a local copy of the PDF so Records can show it (the chain stores
+      // only its hash). Best-effort, this browser only.
+      if (hasFile) await savePdf(id, file);
 
       // Build the success view from data we already have instead of re-reading
       // the chain — a lagging RPC node could otherwise make a confirmed issue
@@ -443,6 +448,7 @@ function RecordsView({ records, account, onConnect, onRefresh, onVerify }) {
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <StatusBadge revoked={t.revoked} />
+                {t.fileHash && <ViewPdfButton id={t.id} />}
                 <button onClick={() => onVerify(t.id)} className="btn-ghost text-xs">Verify</button>
                 {!t.revoked && (
                   <button
@@ -542,6 +548,26 @@ function ProofRow({ icon: Icon, label, value, copyText }) {
         {done ? "copied ✓" : value}
       </button>
     </div>
+  );
+}
+
+function ViewPdfButton({ id }) {
+  const [blob, setBlob] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    loadPdf(id).then((b) => alive && setBlob(b));
+    return () => { alive = false; };
+  }, [id]);
+  if (!blob) return null;
+  const open = () => {
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank", "noopener,noreferrer");
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  };
+  return (
+    <button onClick={open} className="btn-ghost text-xs" title="View the stored PDF (this device)">
+      <FileText className="h-3.5 w-3.5" /> PDF
+    </button>
   );
 }
 
