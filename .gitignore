@@ -9,7 +9,9 @@ node_modules/
 client/dist/
 contracts/artifacts/
 contracts/cache/
-client/public/contract.json
+# NOTE: client/public/contract.json is intentionally committed for the Vercel
+# deploy (it pins the Sepolia address + ABI). It is regenerated locally by the
+# deploy script; see README "Deploy to Vercel".
 
 # Logs
 *.log

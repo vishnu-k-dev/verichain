@@ -84,7 +84,7 @@ export default function App() {
           ))}
         </nav>
 
-        {tab === "issue" && <IssueView account={account} onConnect={connect} onIssued={refresh} />}
+        {tab === "issue" && <IssueView account={account} meta={meta} onConnect={connect} onIssued={refresh} />}
         {tab === "verify" && <VerifyView prefillId={prefillId} />}
         {tab === "records" && (
           <RecordsView
@@ -163,12 +163,15 @@ const SAMPLE = {
   grade: "First Class (8.7)",
 };
 
-function IssueView({ account, onConnect, onIssued }) {
+function IssueView({ account, meta, onConnect, onIssued }) {
   const [form, setForm] = useState(EMPTY);
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
+
+  const wrongAccount =
+    account && meta?.owner && account.toLowerCase() !== meta.owner.toLowerCase();
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
@@ -177,7 +180,8 @@ function IssueView({ account, onConnect, onIssued }) {
     setError("");
     try {
       setBusy("Preparing…");
-      const fileHash = file ? toBytes32(await sha256File(file)) : toBytes32(null);
+      const hasFile = Boolean(file);
+      const fileHash = hasFile ? toBytes32(await sha256File(file)) : toBytes32(null);
       const id = newId();
 
       const contract = await writeContract();
@@ -186,8 +190,20 @@ function IssueView({ account, onConnect, onIssued }) {
       setBusy("Writing to the chain…");
       const receipt = await tx.wait();
 
-      const read = await readContract();
-      const transcript = format(await read.get(id));
+      // Build the success view from data we already have instead of re-reading
+      // the chain — a lagging RPC node could otherwise make a confirmed issue
+      // look like an error. The Records refresh (onIssued) reconciles later.
+      const transcript = {
+        id,
+        studentName: form.studentName,
+        rollNo: form.rollNo,
+        course: form.course,
+        grade: form.grade,
+        fileHash: hasFile ? fileHash : null,
+        issuer: account,
+        issuedAt: Math.floor(Date.now() / 1000),
+        revoked: false,
+      };
       const verifyUrl = `${window.location.origin}/?verify=${id}`;
       const qr = await QRCode.toDataURL(verifyUrl, { width: 320, margin: 2 });
 
@@ -213,6 +229,13 @@ function IssueView({ account, onConnect, onIssued }) {
             <Wallet className="h-3.5 w-3.5" /> Connect
           </button>
         </div>
+      )}
+
+      {wrongAccount && (
+        <Notice tone="warn">
+          This wallet isn't the issuer account. Switch to{" "}
+          <span className="font-mono">{shorten(meta.owner, 6, 4)}</span> in MetaMask to issue or revoke.
+        </Notice>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -543,6 +566,9 @@ function CopyButton({ text, label }) {
 }
 
 function Notice({ tone, children }) {
-  const tones = { error: "border-revoked/20 bg-revoked/5 text-revoked" };
+  const tones = {
+    error: "border-revoked/20 bg-revoked/5 text-revoked",
+    warn: "border-amber-300 bg-amber-50 text-amber-800",
+  };
   return <div className={`rounded-lg border px-3.5 py-2.5 text-sm ${tones[tone]}`}>{children}</div>;
 }

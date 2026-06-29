@@ -1,7 +1,55 @@
 import { ethers } from "ethers";
 
-// Read-only RPC (used for verification — no wallet needed). Override for testnets.
-const RPC_URL = import.meta.env.VITE_RPC_URL || "http://127.0.0.1:8545";
+// Read RPC priority: a build-time override (VITE_RPC_URL, set in Vercel) wins,
+// then the URL baked into contract.json, then public fallbacks, then local.
+const ENV_RPC = import.meta.env.VITE_RPC_URL || "";
+const LOCAL_RPC = "http://127.0.0.1:8545";
+
+// Extra public read endpoints so verification keeps working if one node is
+// rate-limited or down (tried in order, highest priority first).
+const PUBLIC_FALLBACKS = {
+  11155111: [
+    "https://ethereum-sepolia-rpc.publicnode.com",
+    "https://rpc.sepolia.org",
+    "https://1rpc.io/sepolia",
+  ],
+};
+
+// Metadata MetaMask needs when it doesn't already know a chain (error 4902).
+const CHAINS = {
+  11155111: {
+    chainName: "Sepolia",
+    nativeCurrency: { name: "Sepolia Ether", symbol: "ETH", decimals: 18 },
+    blockExplorerUrls: ["https://sepolia.etherscan.io"],
+  },
+  31337: {
+    chainName: "Ledgr Local Chain",
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  },
+};
+
+/** Ordered, de-duped list of read RPC URLs for the deployed chain. */
+function rpcList(meta) {
+  const chainId = Number(meta?.chainId);
+  const urls = [ENV_RPC, meta?.rpc, ...(PUBLIC_FALLBACKS[chainId] || [])].filter(Boolean);
+  return urls.length ? [...new Set(urls)] : [LOCAL_RPC];
+}
+
+/** A resilient read-only provider: tries each RPC in turn, first answer wins. */
+function readProvider(meta) {
+  const urls = rpcList(meta);
+  const chainId = Number(meta?.chainId);
+  const net = Number.isFinite(chainId) && chainId > 0 ? ethers.Network.from(chainId) : undefined;
+  const opts = net ? { staticNetwork: net } : undefined;
+  if (urls.length === 1) return new ethers.JsonRpcProvider(urls[0], net, opts);
+  const configs = urls.map((url, i) => ({
+    provider: new ethers.JsonRpcProvider(url, net, opts),
+    priority: i + 1,
+    stallTimeout: 1500,
+    weight: 1,
+  }));
+  return new ethers.FallbackProvider(configs, net, { quorum: 1 });
+}
 
 let _meta = null;
 
@@ -9,7 +57,11 @@ let _meta = null;
 export async function loadMeta() {
   if (_meta) return _meta;
   const res = await fetch("/contract.json", { cache: "no-store" });
-  if (!res.ok) throw new Error("Contract not deployed yet — run `npm run dev`.");
+  if (!res.ok) {
+    throw new Error(
+      "Couldn't load contract.json. On a deployed site it likely wasn't committed/built; locally, run `npm run dev`."
+    );
+  }
   _meta = await res.json();
   return _meta;
 }
@@ -20,9 +72,8 @@ export function hasWallet() {
 
 /** A read-only contract instance via the public RPC (no MetaMask required). */
 export async function readContract() {
-  const { address, abi } = await loadMeta();
-  const provider = new ethers.JsonRpcProvider(RPC_URL);
-  return new ethers.Contract(address, abi, provider);
+  const meta = await loadMeta();
+  return new ethers.Contract(meta.address, meta.abi, readProvider(meta));
 }
 
 /** Prompt MetaMask to connect and return the active account address. */
@@ -48,26 +99,24 @@ export async function writeContract() {
 
 /** Ask MetaMask to switch to (or add) the contract's network. */
 export async function ensureNetwork() {
-  const { chainId } = await loadMeta();
-  const hex = "0x" + Number(chainId).toString(16);
+  const meta = await loadMeta();
+  const chainId = Number(meta.chainId);
+  const hex = "0x" + chainId.toString(16);
   try {
     await window.ethereum.request({
       method: "wallet_switchEthereumChain",
       params: [{ chainId: hex }],
     });
   } catch (err) {
-    // 4902 = chain not added to MetaMask yet → add it (local chains only).
+    // 4902 = chain unknown to MetaMask → add it so it becomes selectable.
     if (err.code === 4902) {
+      const info = CHAINS[chainId] || {
+        chainName: `Chain ${chainId}`,
+        nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+      };
       await window.ethereum.request({
         method: "wallet_addEthereumChain",
-        params: [
-          {
-            chainId: hex,
-            chainName: "Ledgr Local Chain",
-            rpcUrls: [RPC_URL],
-            nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-          },
-        ],
+        params: [{ chainId: hex, rpcUrls: rpcList(meta), ...info }],
       });
     } else if (err.code !== -32002) {
       throw err;

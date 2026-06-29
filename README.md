@@ -85,16 +85,43 @@ owner, so:
 npm test        # Hardhat contract tests (8 tests)
 ```
 
-## Deploy to a public testnet (optional)
+## Deploy to Vercel (Sepolia)
 
-Put `SEPOLIA_RPC_URL` and a funded `PRIVATE_KEY` in `.env`, then:
+Vercel hosts only the static frontend, so the contract must live on a public
+chain. The flow: deploy the contract to **Sepolia** once, commit the generated
+`client/public/contract.json` (it pins the address + ABI), then host `client/`
+on Vercel.
+
+**1. Deploy the contract to Sepolia**
 
 ```bash
-npm --prefix contracts run deploy:sepolia
+# In the repo root .env, set SEPOLIA_RPC_URL (Alchemy/Infura) and a funded,
+# throwaway PRIVATE_KEY (this account becomes the contract owner/issuer).
+npm run deploy:sepolia
 ```
 
-Set `VITE_RPC_URL` (in `client/.env`) to a Sepolia RPC so reads/verification hit
-the testnet, and point MetaMask at Sepolia for issuing.
+This writes `client/public/contract.json` (address, chainId `11155111`, ABI, and
+a public read RPC). Commit it:
+
+```bash
+git add client/public/contract.json && git commit -m "Deploy to Sepolia"
+git push
+```
+
+> Running `npm run dev` later overwrites this file with the local (31337)
+> version. To stop local runs from dirtying the committed Sepolia file:
+> `git update-index --skip-worktree client/public/contract.json`.
+
+**2. Create the Vercel project**
+
+- Import the GitHub repo in Vercel.
+- Set **Root Directory** to `client` (Vercel auto-detects Vite).
+- (Recommended) add an env var **`VITE_RPC_URL`** = your Sepolia RPC for fast,
+  reliable reads. Without it the app uses the public RPC in `contract.json`.
+- Deploy.
+
+**3. Use it** — verification works for anyone with no wallet. To issue/revoke,
+point MetaMask at Sepolia and connect the **owner** account (see below).
 
 ## Notes
 

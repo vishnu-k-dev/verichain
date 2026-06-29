@@ -7,6 +7,7 @@
     "setup": "npm install && npm --prefix contracts install && npm --prefix client install",
     "chain": "npm --prefix contracts run node",
     "deploy": "npm --prefix contracts run deploy",
+    "deploy:sepolia": "npm --prefix contracts run deploy:sepolia",
     "test": "npm --prefix contracts test",
     "dev": "concurrently -k -n chain,web -c blue,magenta \"npm --prefix contracts run node\" \"wait-on tcp:127.0.0.1:8545 && npm --prefix contracts run deploy && npm --prefix client run dev\""
   },

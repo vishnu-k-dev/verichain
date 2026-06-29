@@ -19,11 +19,20 @@ async function main() {
   console.log(`✓ TranscriptRegistry deployed at: ${address}`);
 
   const artifact = await hre.artifacts.readArtifact("TranscriptRegistry");
+
+  // A public, key-less read RPC baked into the file so the deployed frontend can
+  // read the chain with zero extra config. (Issuing still goes through MetaMask.)
+  const PUBLIC_RPC = {
+    31337: "http://127.0.0.1:8545",
+    11155111: "https://ethereum-sepolia-rpc.publicnode.com",
+  };
+
   const out = {
     address,
     chainId: Number(net.chainId),
     network: hre.network.name,
     owner: deployer.address,
+    rpc: PUBLIC_RPC[Number(net.chainId)] || "",
     abi: artifact.abi,
   };
 
